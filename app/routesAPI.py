@@ -1,8 +1,7 @@
 from flask import redirect, Blueprint, request, jsonify
-from yandex_music import ClientAsync
-import requests
+from yandex_music import Client
 from app import app
-from app.DB import AddUser
+from app.DB import AddUser, VerifyUser
 
 
 
@@ -10,12 +9,12 @@ from app.DB import AddUser
 def home():
     return "cum"
 @app.route("/musics/<string:token>")
-async def musics(token):
+def musics(token):
     print(token)
     print(TOKEN)
     try:
     # Инициализация клиента с таймаутом
-        client = await ClientAsync(token=token).init()
+        client = Client(token=token).init()
         
         # Проверка авторизации
         if not client.me:
@@ -24,7 +23,7 @@ async def musics(token):
             print("Успешная авторизация!")
             print(f"Логин: {client.me.account.login}")
             print(f"Права: {client.me.account.first_name}")
-        liked_tracks = await client.users_likes_tracks()
+        liked_tracks = client.users_likes_tracks()
         print(liked_tracks[0])
 
         return str(liked_tracks[0])
@@ -44,28 +43,21 @@ def registration():
     email = data.get('email')
     password = data.get('password')
     yandex_token = data.get('yandex_token')
-    return AddUser(email, password, yandex_token)
+    try:
+        client = Client(token=yandex_token).init()
+    except:
+        return jsonify({"message": "Invalid token"}), 400
+    if not client.me:
+        return jsonify({"message": "Invalid token"}), 400
+    if not client.me.account:
+        return jsonify({"message": "Invalid token"}), 400
+    return AddUser(email, password, yandex_token, client=client)
 
 
 
-@auth_bp.route('/login')
+@auth_bp.route('/login', methods=["POST"])
 def login(): 
-    code = request.args.get("code")
-    if not code:
-        return "Empty code", 400
-    token_url = "https://oauth.yandex.ru/token"
-    data = {
-        'grant_type': 'authorization_code',
-        'code': code,
-        'client_id': CLIENT_ID,
-        'client_secret': CLIENT_SECRET
-    }
-    responce = requests.post(token_url, data=data)
-    token_data = responce.json()
-    print(token_data)
-    token = token_data.get("access_token")
-    if not token:
-        return "Empty token", 400
-    else:
-        TOKEN = token
-        return f"ТОКЕН: {token}"
+    data = request.get_json()
+    email = data.get("email")
+    password = data.get("password")
+    return VerifyUser(email=email, password=password)
